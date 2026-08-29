@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A conversational file organizer that learns how each student studies."
+    />
+    <title>StudySort</title>
+    <script src="vendor/lucide.min.js" defer></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="StudySort home">
+          <span class="brand-mark" aria-hidden="true"><i data-lucide="layers-3"></i></span>
+          <span>StudySort</span>
+        </a>
+
+        <div class="privacy-note">
+          <i data-lucide="shield-check" aria-hidden="true"></i>
+          <span>Your files stay on this device</span>
+        </div>
+
+        <button class="icon-button mobile-profile-button" id="mobile-profile-button" type="button" aria-label="Open student profile" title="Student profile">
+          <i data-lucide="user-round"></i>
+        </button>
+      </header>
+
+      <main class="workspace">
+        <section class="conversation-panel" aria-labelledby="conversation-title">
+          <div class="conversation-header">
+            <div>
+              <p class="eyebrow">Personal organizer</p>
+              <h1 id="conversation-title">Sort your study files</h1>
+            </div>
+            <button class="text-button" id="restart-button" type="button">
+              <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+              Start over
+            </button>
+          </div>
+
+          <div class="messages" id="messages" aria-live="polite" aria-label="Conversation with StudySort"></div>
+
+          <div class="suggestions" id="suggestions" aria-label="Suggested replies"></div>
+
+          <form class="composer" id="composer">
+            <label class="sr-only" for="message-input">Message StudySort</label>
+            <input id="message-input" name="message" type="text" autocomplete="off" placeholder="Type a reply..." />
+            <button class="send-button" type="submit" aria-label="Send message" title="Send">
+              <i data-lucide="arrow-up" aria-hidden="true"></i>
+            </button>
+          </form>
+        </section>
+
+        <aside class="organizer-panel" id="organizer-panel" aria-label="Student profile and organization plan">
+          <div class="mobile-panel-header">
+            <strong>Your setup</strong>
+            <button class="icon-button" id="close-profile-button" type="button" aria-label="Close student profile" title="Close">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <section class="profile-section" aria-labelledby="profile-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Student profile</p>
+                <h2 id="profile-title">Personalization</h2>
+              </div>
+              <span class="status-dot" title="Saved on this device"></span>
+            </div>
+
+            <dl class="profile-list">
+              <div>
+                <dt>Name</dt>
+                <dd id="profile-name">Not set</dd>
+              </div>
+              <div>
+                <dt>Study level</dt>
+                <dd id="profile-level">Not set</dd>
+              </div>
+              <div>
+                <dt>Courses</dt>
+                <dd id="profile-courses">Not set</dd>
+              </div>
+              <div>
+                <dt>Folder style</dt>
+                <dd id="profile-style">Not set</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="plan-section" aria-labelledby="plan-title">
+            <div class="section-heading plan-heading">
+              <div>
+                <p class="eyebrow">Current folder</p>
+                <h2 id="plan-title">Organization plan</h2>
+              </div>
+              <span class="file-count" id="file-count">0 files</span>
+            </div>
+
+            <div class="empty-plan" id="empty-plan">
+              <img
+                class="mascot-image"
+                src="assets/studysort-organizer-cat.png"
+                alt="A cute cat sorting study papers into folders"
+              />
+              <p>Your organizing cat is ready. Select files, a folder, or a drive to build a personalized plan.</p>
+            </div>
+
+            <div class="plan-content hidden" id="plan-content">
+              <div class="folder-summary">
+                <i data-lucide="folder-open" aria-hidden="true"></i>
+                <div>
+                  <strong id="folder-name">Selected folder</strong>
+                  <span id="folder-summary">Ready to review</span>
+                </div>
+              </div>
+              <div class="suggested-folders-heading">
+                <span>Suggested folders</span>
+                <strong id="folder-count">0</strong>
+              </div>
+              <div class="suggested-folder-list" id="suggested-folder-list"></div>
+              <button class="secondary-button choose-destination-button hidden" id="choose-destination-button" type="button">
+                <i data-lucide="folder-output" aria-hidden="true"></i>
+                <span>Choose destination folder</span>
+              </button>
+              <button class="primary-button" id="create-folders-button" type="button">
+                <i data-lucide="folder-plus" aria-hidden="true"></i>
+                <span>Create suggested folders</span>
+              </button>
+              <button class="secondary-button review-files-button" id="organize-button" type="button">
+                <i data-lucide="list-tree" aria-hidden="true"></i>
+                <span>Review file placements</span>
+              </button>
+              <details class="file-groups">
+                <summary>File groups found</summary>
+                <div class="category-list" id="category-list"></div>
+              </details>
+              <p class="safe-copy-note">Folder creation does not move or copy files. File changes always require a separate review.</p>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="modal-backdrop hidden" id="review-modal" role="presentation">
+      <section class="review-dialog" role="dialog" aria-modal="true" aria-labelledby="review-title">
+        <header class="review-header">
+          <div>
+            <p class="eyebrow">Before anything changes</p>
+            <h2 id="review-title">Review your organization plan</h2>
+          </div>
+          <button class="icon-button" id="close-review-button" type="button" aria-label="Close review" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="review-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Course</th>
+                <th>Type</th>
+                <th>Destination</th>
+              </tr>
+            </thead>
+            <tbody id="review-table-body"></tbody>
+          </table>
+        </div>
+        <footer class="review-footer">
+          <p id="review-summary">No files selected.</p>
+          <div class="review-actions">
+            <button class="secondary-button" id="cancel-review-button" type="button">Cancel</button>
+            <button class="primary-button" id="confirm-organize-button" type="button">
+              <i data-lucide="copy-check" aria-hidden="true"></i>
+              Create organized copies
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
+
+    <div class="modal-backdrop hidden" id="report-modal" role="presentation">
+      <section class="review-dialog report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-title">
+        <header class="review-header">
+          <div>
+            <p class="eyebrow">Organization complete</p>
+            <h2 id="report-title">Created file locations</h2>
+          </div>
+          <button class="icon-button" id="close-report-button" type="button" aria-label="Close file-location report" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="review-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Status</th>
+                <th>Created location</th>
+              </tr>
+            </thead>
+            <tbody id="report-table-body"></tbody>
+          </table>
+        </div>
+        <footer class="review-footer">
+          <p id="report-summary">No files have been created.</p>
+          <button class="primary-button" id="done-report-button" type="button">Done</button>
+        </footer>
+      </section>
+    </div>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <input id="files-input" type="file" multiple hidden />
+    <input id="folder-input" type="file" webkitdirectory multiple hidden />
+    <script src="vendor/jszip.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
