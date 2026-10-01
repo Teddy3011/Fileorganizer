@@ -23,18 +23,6 @@ const FILE_TYPES = [
   "Other",
 ];
 
-const EXTENSION_TYPES = {
-  Documents: ["doc", "docx", "odt", "rtf", "txt", "md"],
-  Presentations: ["ppt", "pptx", "key", "odp"],
-  Spreadsheets: ["xls", "xlsx", "csv", "ods"],
-  Images: ["jpg", "jpeg", "png", "gif", "webp", "heic", "svg"],
-  Videos: ["mp4", "mov", "mkv", "avi", "webm", "m4v"],
-  Audio: ["mp3", "wav", "m4a", "aac", "flac", "ogg"],
-  Archives: ["zip", "rar", "7z", "tar", "gz"],
-  Code: ["js", "ts", "jsx", "tsx", "py", "java", "c", "cpp", "cs", "html", "css", "sql", "ipynb"],
-  Installers: ["exe", "msi", "iso", "dmg", "pkg"],
-};
-
 const MAX_SCAN_FILES = 25000;
 const MAX_DRIVE_CONTENT_FILES = 300;
 const CONTENT_EXTENSIONS = new Set(["pdf", "pptx", "docx", "txt", "md", "csv", "html", "htm"]);
@@ -51,37 +39,6 @@ const SKIPPED_DIRECTORY_NAMES = new Set([
   ".git",
   "_studysort",
 ]);
-
-const TYPE_RULES = [
-  { type: "Solutions", words: ["worked solutions", "worked solution", "answer key", "model answers", "model answer", "solutions", "solution"] },
-  { type: "Questions", words: ["practice questions", "practice problems", "question bank", "questions", "question", "problem set", "exercises", "exercise"] },
-  { type: "Syllabi", words: ["syllabus", "syllabi", "course outline", "schedule"] },
-  { type: "Exams & Quizzes", words: ["exam", "quiz", "midterm", "final", "test", "practice test"] },
-  { type: "Assignments", words: ["assignment", "homework", "worksheet", "problem set", "pset", "submission"] },
-  { type: "Projects", words: ["project", "presentation", "capstone", "report", "portfolio"] },
-  { type: "Lecture Slides", words: ["lecture slides", "learning objectives", "slide deck", "slides"] },
-  { type: "Lecture Notes", words: ["lecture notes", "class notes", "notes", "lecture", "week", "lesson"] },
-  { type: "Reading", words: ["reading", "chapter", "textbook", "article", "paper", "journal"] },
-  { type: "Study Materials", words: ["study guide", "flashcard", "revision", "review", "summary", "cheat sheet"] },
-];
-
-const TYPE_PRIORITY = {
-  Solutions: 60,
-  Questions: 50,
-  "Exams & Quizzes": 40,
-  Syllabi: 35,
-  Assignments: 30,
-  "Lecture Slides": 25,
-};
-
-const GENERIC_TOKENS = new Set(
-  TYPE_RULES.flatMap((rule) => rule.words.join(" ").split(/[^a-z0-9]+/))
-    .concat([
-      "file", "files", "copy", "final", "draft", "new", "old", "untitled", "document",
-      "scan", "page", "week", "class", "course", "unit", "part", "version", "updated",
-    ])
-    .filter(Boolean),
-);
 
 const LEVELS = ["High school", "College", "University", "Graduate school"];
 const STYLES = ["By course, then type", "By course, then semester", "By type, then course"];
@@ -156,6 +113,24 @@ function loadProfile() {
 function saveProfile() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profile));
   renderProfile();
+  // The watcher classifies new downloads with these courses, so keep the service in sync.
+  apiRequest("/api/profile", { method: "PUT", body: JSON.stringify(state.profile) }).catch(() => {});
+}
+
+async function syncProfileWithService() {
+  try {
+    const remote = await apiRequest("/api/profile");
+    if (!state.profile.name && remote.name) {
+      state.profile = { ...defaultProfile(), ...remote };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profile));
+      renderProfile();
+      startConversation();
+    } else if (state.profile.name) {
+      saveProfile();
+    }
+  } catch {
+    // Offline: the flow panel already tells the student the service isn't running.
+  }
 }
 
 function renderProfile() {
@@ -515,7 +490,7 @@ function movePlanFiles(text) {
     return;
   }
 
-  const parts = target.split(/\s*[\/>]\s*/).map(cleanCommandPart).filter(Boolean);
+  const parts = target.split(/\s*[/>]\s*/).map(cleanCommandPart).filter(Boolean);
   let targetCourse = parts.map((part) => findCaseInsensitive(["General", ...state.profile.courses], part)).find(Boolean);
   let targetType = parts.map((part) => findCaseInsensitive(FILE_TYPES, part)).find(Boolean);
 
@@ -655,11 +630,7 @@ async function loadPdfLibrary() {
 
 async function extractPdfFirstPage(file) {
   const pdfjs = await loadPdfLibrary();
-  const standardFontDataUrl = new URL("./vendor/pdf-standard-fonts/", window.location.href).href;
-  const documentTask = pdfjs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-    standardFontDataUrl,
-  });
+  const documentTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   const pdf = await documentTask.promise;
   try {
     const page = await pdf.getPage(1);
@@ -714,10 +685,28 @@ async function extractPreviewText(entry) {
   return { text: text.replace(/\s+/g, " ").trim().slice(0, 12000), source };
 }
 
+async function apiRequest(path, options = {}) {
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers: options.body ? { "Content-Type": "application/json" } : undefined,
+    });
+  } catch {
+    throw new Error("the StudySort service is not reachable. Start it with: python app_server.py");
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || `request failed (${response.status})`);
+  return body;
+}
+
+// Classification lives in the Python service so the watcher and this page agree.
+async function classifyWithService(items) {
+  return apiRequest("/api/classify", { method: "POST", body: JSON.stringify({ files: items }) });
+}
+
 async function analyzeEntries(entries, analyzeEverySupportedFile) {
-  const files = entries.map((entry) =>
-    classifyEntry({ ...entry, previewText: "", analysisSource: "Filename and path" }),
-  );
+  const previews = entries.map(() => ({ text: "", source: "Filename and path" }));
   const supportedIndexes = entries
     .map((entry, index) => (supportsContentAnalysis(entry) ? index : -1))
     .filter((index) => index >= 0);
@@ -736,24 +725,31 @@ async function analyzeEntries(entries, analyzeEverySupportedFile) {
       cursor += 1;
       try {
         const preview = await extractPreviewText(entries[index]);
-        files[index] = classifyEntry({
-          ...entries[index],
-          previewText: preview.text,
-          analysisSource: preview.text ? preview.source : `${preview.source}; no readable text`,
-        });
+        previews[index] = {
+          text: preview.text,
+          source: preview.text ? preview.source : `${preview.source}; no readable text`,
+        };
         stats.analyzed += 1;
       } catch {
-        files[index] = classifyEntry({
-          ...entries[index],
-          previewText: "",
-          analysisSource: "Content unavailable; used filename and path",
-        });
+        previews[index] = { text: "", source: "Unsupported or corrupted document; used filename and path" };
         stats.failed += 1;
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(4, queue.length) }, () => worker()));
+  const results = await classifyWithService(
+    entries.map((entry, index) => ({ name: entry.name, path: entry.path, text: previews[index].text })),
+  );
+  const files = entries.map((entry, index) => ({
+    ...entry,
+    extension: fileExtension(entry.name),
+    course: results[index].course,
+    type: results[index].type,
+    confidence: results[index].confidence,
+    reason: results[index].reason,
+    analysisSource: previews[index].source,
+  }));
   return { files, stats };
 }
 
@@ -761,56 +757,66 @@ elements.folderInput.addEventListener("change", async () => {
   const files = Array.from(elements.folderInput.files || []);
   if (!files.length) return;
   setBusy(true);
-  addMessage(`I found ${files.length} files. I'm reading supported first pages and slides before I suggest folders.`);
-  state.directoryHandle = null;
-  state.sourceMode = "folder-preview";
-  state.scanStats = { skipped: 0, limited: false };
-  const entries = files
-    .filter((file) => !file.name.startsWith(".") && !file.webkitRelativePath.includes("/_StudySort/"))
-    .map((file) =>
-      ({
-        name: file.name,
-        path: file.webkitRelativePath || file.name,
-        file,
-        handle: null,
-      }),
-    );
-  const analysis = await analyzeEntries(entries, false);
-  state.scannedFiles = analysis.files;
-  state.contentStats = analysis.stats;
-  const rootName = files[0].webkitRelativePath?.split("/")[0] || "Selected files";
-  state.sourceLabel = rootName;
-  state.destinationName = "";
-  renderPlan(rootName, false);
-  addMessage(`I analyzed ${state.scannedFiles.length} ${pluralize("file", state.scannedFiles.length)} and read content from ${analysis.stats.analyzed}. Choose a destination folder only when the plan looks right.`);
-  showPlanActions();
-  elements.folderInput.value = "";
-  setBusy(false);
+  try {
+    addMessage(`I found ${files.length} files. I'm reading supported first pages and slides before I suggest folders.`);
+    state.directoryHandle = null;
+    state.sourceMode = "folder-preview";
+    state.scanStats = { skipped: 0, limited: false };
+    const entries = files
+      .filter((file) => !file.name.startsWith(".") && !file.webkitRelativePath.includes("/_StudySort/"))
+      .map((file) =>
+        ({
+          name: file.name,
+          path: file.webkitRelativePath || file.name,
+          file,
+          handle: null,
+        }),
+      );
+    const analysis = await analyzeEntries(entries, false);
+    state.scannedFiles = analysis.files;
+    state.contentStats = analysis.stats;
+    const rootName = files[0].webkitRelativePath?.split("/")[0] || "Selected files";
+    state.sourceLabel = rootName;
+    state.destinationName = "";
+    renderPlan(rootName, false);
+    addMessage(`I analyzed ${state.scannedFiles.length} ${pluralize("file", state.scannedFiles.length)} and read content from ${analysis.stats.analyzed}. Choose a destination folder only when the plan looks right.`);
+    showPlanActions();
+  } catch (error) {
+    addMessage(`I couldn't analyze those files: ${error.message}.`);
+  } finally {
+    elements.folderInput.value = "";
+    setBusy(false);
+  }
 });
 
 elements.filesInput.addEventListener("change", async () => {
   const files = Array.from(elements.filesInput.files || []);
   if (!files.length) return;
   setBusy(true);
-  addMessage(`I'm analyzing all ${files.length} selected ${pluralize("file", files.length)}. For supported documents, I'll read page 1, slide 1, or the opening section.`);
-  state.directoryHandle = null;
-  state.sourceMode = "files";
-  state.sourceLabel = `${files.length} selected ${pluralize("file", files.length)}`;
-  state.destinationName = "";
-  state.scanStats = { skipped: 0, limited: false };
-  const entries = files
-    .filter((file) => !file.name.startsWith("."))
-    .map((file) => ({ name: file.name, path: file.name, file, handle: null }));
-  const analysis = await analyzeEntries(entries, true);
-  state.scannedFiles = analysis.files;
-  state.contentStats = analysis.stats;
-  renderPlan(state.sourceLabel, false);
-  const folderCount = getSuggestedFolders().size;
-  const failedNote = analysis.stats.failed ? ` ${analysis.stats.failed} could not be read internally and use their names instead.` : "";
-  addMessage(`Analysis complete. I read content from ${analysis.stats.analyzed} supported ${pluralize("file", analysis.stats.analyzed)}, analyzed the remaining files by name, and suggest ${folderCount} ${pluralize("folder", folderCount)}.${failedNote} You can customize the plan here in chat before choosing a destination.`);
-  showPlanActions();
-  elements.filesInput.value = "";
-  setBusy(false);
+  try {
+    addMessage(`I'm analyzing all ${files.length} selected ${pluralize("file", files.length)}. For supported documents, I'll read page 1, slide 1, or the opening section.`);
+    state.directoryHandle = null;
+    state.sourceMode = "files";
+    state.sourceLabel = `${files.length} selected ${pluralize("file", files.length)}`;
+    state.destinationName = "";
+    state.scanStats = { skipped: 0, limited: false };
+    const entries = files
+      .filter((file) => !file.name.startsWith("."))
+      .map((file) => ({ name: file.name, path: file.name, file, handle: null }));
+    const analysis = await analyzeEntries(entries, true);
+    state.scannedFiles = analysis.files;
+    state.contentStats = analysis.stats;
+    renderPlan(state.sourceLabel, false);
+    const folderCount = getSuggestedFolders().size;
+    const failedNote = analysis.stats.failed ? ` ${analysis.stats.failed} could not be read internally and use their names instead.` : "";
+    addMessage(`Analysis complete. I read content from ${analysis.stats.analyzed} supported ${pluralize("file", analysis.stats.analyzed)}, analyzed the remaining files by name, and suggest ${folderCount} ${pluralize("folder", folderCount)}.${failedNote} You can customize the plan here in chat before choosing a destination.`);
+    showPlanActions();
+  } catch (error) {
+    addMessage(`I couldn't analyze those files: ${error.message}.`);
+  } finally {
+    elements.filesInput.value = "";
+    setBusy(false);
+  }
 });
 
 async function chooseDestinationFolder() {
@@ -836,82 +842,6 @@ async function chooseDestinationFolder() {
     }
     addMessage(`I couldn't open that destination: ${error.message || "permission was interrupted"}.`);
   }
-}
-
-function classifyEntry(entry) {
-  const searchable = `${entry.path} ${entry.name} ${entry.previewText || ""}`
-    .toLowerCase()
-    .replace(/[_\-.]+/g, " ")
-    .replace(/\s+/g, " ");
-  const compactSearchable = searchable.replace(/\s+/g, "");
-  const extension = fileExtension(entry.name);
-  let course = "General";
-  let courseScore = 0;
-
-  state.profile.courses.forEach((candidate) => {
-    const aliases = courseAliases(candidate);
-    const score = aliases.reduce((best, alias) => {
-      const compactAlias = alias.replace(/\s+/g, "");
-      return searchable.includes(alias) || compactSearchable.includes(compactAlias)
-        ? Math.max(best, compactAlias.length)
-        : best;
-    }, 0);
-    if (score > courseScore) {
-      course = candidate;
-      courseScore = score;
-    }
-  });
-
-  let type = "Other";
-  let typeScore = 0;
-  TYPE_RULES.forEach((rule) => {
-    const wordScore = rule.words.reduce((best, word) => (searchable.includes(word) ? Math.max(best, word.length) : best), 0);
-    const score = wordScore ? wordScore + (TYPE_PRIORITY[rule.type] || 0) : 0;
-    if (score > typeScore) {
-      type = rule.type;
-      typeScore = score;
-    }
-  });
-
-  if (type === "Other") {
-    if (["epub", "mobi"].includes(extension)) type = "Reading";
-    if (["ppt", "pptx", "key", "odp"].includes(extension)) type = "Lecture Slides";
-    const extensionMatch = Object.entries(EXTENSION_TYPES).find(([, extensions]) => extensions.includes(extension));
-    if (extensionMatch && type === "Other") type = extensionMatch[0];
-  }
-  if (["ppt", "pptx", "key", "odp"].includes(extension) && type === "Lecture Notes") {
-    type = "Lecture Slides";
-  }
-
-  const learnedType = findLearnedType(searchable, course);
-  if (learnedType) type = learnedType;
-
-  return {
-    ...entry,
-    extension,
-    course,
-    type,
-    analysisSource: entry.analysisSource || "Filename and path",
-    confidence: entry.previewText && (courseScore || typeScore) ? "high" : courseScore || typeScore ? "medium" : "low",
-  };
-}
-
-function courseAliases(course) {
-  const normalized = course.toLowerCase().replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
-  const compact = normalized.replace(/\s+/g, "");
-  const words = normalized.split(" ").filter((word) => word.length > 2);
-  return [...new Set([normalized, compact, ...words])].filter(Boolean);
-}
-
-function findLearnedType(searchable, course) {
-  const matches = Object.entries(state.profile.corrections || {})
-    .filter(([token]) => searchable.includes(token))
-    .map(([token, value]) => {
-      const info = typeof value === "string" ? { type: value, course: null } : value;
-      return { token, type: info.type, courseMatch: info.course && info.course === course ? 1 : 0 };
-    });
-  matches.sort((a, b) => b.courseMatch - a.courseMatch || b.token.length - a.token.length);
-  return matches[0]?.type || "";
 }
 
 function renderPlan(folderName, canWrite) {
@@ -1018,7 +948,7 @@ function openReview() {
       ? '<span class="confidence-flag" title="Low-confidence guess — please check the course and type">Needs review</span>'
       : "";
     row.innerHTML = `
-      <td><div class="file-name-cell"><span>${escapeHtml(file.name)}</span>${flag}<span class="analysis-source">${escapeHtml(file.analysisSource || "Filename and path")}</span></div></td>
+      <td><div class="file-name-cell"><span>${escapeHtml(file.name)}</span>${flag}<span class="analysis-source">${escapeHtml(file.analysisSource || "Filename and path")}${file.reason ? ` · ${escapeHtml(file.reason)}` : ""}</span></div></td>
       <td>${selectMarkup("course", index, ["General", ...state.profile.courses], file.course)}</td>
       <td>${selectMarkup("type", index, FILE_TYPES, file.type)}</td>
       <td class="destination-cell">${escapeHtml(destinationFor(file))}</td>
@@ -1049,9 +979,15 @@ function handleClassificationChange(event) {
   file[field] = event.target.value;
 
   if (field === "type" && previousType !== file.type) {
-    const token = strongestFilenameToken(file.name);
-    if (token) state.profile.corrections[token] = { type: file.type, course: file.course };
-    saveProfile();
+    apiRequest("/api/corrections", {
+      method: "POST",
+      body: JSON.stringify({ filename: file.name, type: file.type, course: file.course }),
+    })
+      .then(({ profile }) => {
+        state.profile = { ...state.profile, corrections: profile.corrections };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profile));
+      })
+      .catch((error) => showToast(`Correction not saved: ${error.message}`));
   }
 
   const row = event.target.closest("tr");
@@ -1081,23 +1017,33 @@ async function organizeFiles() {
         elements.confirmOrganize.textContent = `Creating copies... (${index}/${total})`;
       }
       let finalName = file.name;
+      let directory = null;
+      let created = false;
       try {
         const destination = destinationParts(file);
         const dirKey = destination.folders.map(safeFolderName).join("/");
-        finalName = uniqueFileName(usedNames, dirKey, file.name);
-        if (finalName !== file.name) renamedForCollision += 1;
-        let directory = outputRoot;
+        directory = outputRoot;
         for (const part of destination.folders) {
           directory = await directory.getDirectoryHandle(safeFolderName(part), { create: true });
         }
-        const outputHandle = await directory.getFileHandle(finalName, { create: true });
-        const writable = await outputHandle.createWritable();
+        finalName = await uniqueFileName(usedNames, dirKey, file.name, directory);
+        if (finalName !== file.name) renamedForCollision += 1;
         const sourceFile = file.file || (await file.handle.getFile());
-        await writable.write(sourceFile);
-        await writable.close();
+        const outputHandle = await directory.getFileHandle(finalName, { create: true });
+        created = true;
+        // createWritable() writes to a temporary swap file; close() swaps it in only when complete.
+        const writable = await outputHandle.createWritable();
+        try {
+          await writable.write(sourceFile);
+          await writable.close();
+        } catch (error) {
+          await writable.abort().catch(() => {});
+          throw error;
+        }
         copied += 1;
         results.push({ name: file.name, status: "Copied", location: displayDestination(file, finalName) });
       } catch (error) {
+        if (created) await directory.removeEntry(finalName).catch(() => {});
         failures.push(`${file.name}: ${error.message || "copy failed"}`);
         results.push({ name: file.name, status: "Failed", location: displayDestination(file, finalName) });
       }
@@ -1109,7 +1055,7 @@ async function organizeFiles() {
       ? `I copied ${copied} files into _StudySort. ${failures.length} couldn't be copied, and their originals are still safe.`
       : `Done, ${state.profile.name}. I created organized copies of all ${copied} files inside _StudySort. Your originals are exactly where you left them.`;
     const collisionNote = renamedForCollision
-      ? ` ${renamedForCollision} ${pluralize("file", renamedForCollision)} shared a name with another file in the same folder, so I added a number to keep both.`
+      ? ` ${renamedForCollision} ${pluralize("file", renamedForCollision)} shared a name with an existing file, so I added a number to keep both.`
       : "";
     addMessage(`${message}${collisionNote} I saved a file-location report so you can see where every copy was created.`, "assistant", {
       action: { label: "View file locations", icon: "map-pin", onClick: openReport },
@@ -1140,20 +1086,27 @@ function displayDestination(file, nameOverride) {
   return /^[A-Za-z]:$/.test(root) ? location.replaceAll("/", "\\") : location;
 }
 
-function uniqueFileName(usedNames, dirKey, name) {
+async function fileExists(directory, name) {
+  try {
+    await directory.getFileHandle(name);
+    return true;
+  } catch (error) {
+    if (error.name === "NotFoundError") return false;
+    if (error.name === "TypeMismatchError") return true; // a folder already has that name
+    throw error;
+  }
+}
+
+// Never overwrite: skip names used earlier in this run AND names already on disk.
+async function uniqueFileName(usedNames, dirKey, name, directory) {
   if (!usedNames.has(dirKey)) usedNames.set(dirKey, new Set());
   const set = usedNames.get(dirKey);
-  const lower = name.toLowerCase();
-  if (!set.has(lower)) {
-    set.add(lower);
-    return name;
-  }
   const dotIndex = name.lastIndexOf(".");
   const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
   const ext = dotIndex > 0 ? name.slice(dotIndex) : "";
-  let counter = 2;
-  let candidate = `${base} (${counter})${ext}`;
-  while (set.has(candidate.toLowerCase())) {
+  let counter = 1;
+  let candidate = name;
+  while (set.has(candidate.toLowerCase()) || (await fileExists(directory, candidate))) {
     counter += 1;
     candidate = `${base} (${counter})${ext}`;
   }
@@ -1210,15 +1163,6 @@ function selectMarkup(field, index, options, selected) {
   </select>`;
 }
 
-function strongestFilenameToken(filename) {
-  return filename
-    .toLowerCase()
-    .replace(/\.[^.]+$/, "")
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 5 && !/^\d+$/.test(token) && !GENERIC_TOKENS.has(token))
-    .sort((a, b) => b.length - a.length)[0] || "";
-}
-
 function parseCourses(text) {
   return [...new Set(text.split(/[,;\n]+/).map((course) => course.trim()).filter(Boolean))].slice(0, 12);
 }
@@ -1242,15 +1186,6 @@ function naturalList(items) {
 
 function pluralize(word, count) {
   return count === 1 ? word : `${word}s`;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function setBusy(value) {
@@ -1320,3 +1255,4 @@ window.addEventListener("load", refreshIcons);
 
 renderProfile();
 startConversation();
+syncProfileWithService();

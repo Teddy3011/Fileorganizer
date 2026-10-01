@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest -q
+
+  startup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Start the service against a temp folder and push a file through it
+        run: |
+          mkdir -p "$RUNNER_TEMP/dl"
+          python app_server.py --watch "$RUNNER_TEMP/dl" --data-dir "$RUNNER_TEMP/data" &
+          for i in $(seq 30); do curl -fs http://127.0.0.1:4173/api/status && break; sleep 1; done
+          curl -fs http://127.0.0.1:4173/ | grep -q "View file flow"
+          for f in app.js flow.js styles.css vendor/lucide.min.js vendor/jszip.min.js vendor/pdf.min.mjs assets/studysort-organizer-cat.svg; do
+            curl -fsI "http://127.0.0.1:4173/$f" > /dev/null || { echo "missing asset $f"; exit 1; }
+          done
+          echo "CS101 homework" > "$RUNNER_TEMP/dl/CS101_hw1.txt"
+          for i in $(seq 20); do
+            curl -fs http://127.0.0.1:4173/api/files | grep -q awaiting_approval && exit 0
+            sleep 1
+          done
+          echo "file never reached awaiting_approval"; exit 1
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm test

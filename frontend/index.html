@@ -92,6 +92,22 @@
             </dl>
           </section>
 
+          <section class="live-section" aria-labelledby="live-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Live downloads</p>
+                <h2 id="live-title">Download watcher</h2>
+              </div>
+              <span class="live-dot offline" id="live-dot" aria-hidden="true"></span>
+            </div>
+            <p class="live-folder" id="live-watch-name">Connecting to StudySort service…</p>
+            <p class="live-summary" id="live-summary" aria-live="polite"></p>
+            <button class="secondary-button live-flow-button" id="view-flow-button" type="button">
+              <i data-lucide="workflow" aria-hidden="true"></i>
+              <span>View file flow</span>
+            </button>
+          </section>
+
           <section class="plan-section" aria-labelledby="plan-title">
             <div class="section-heading plan-heading">
               <div>
@@ -104,7 +120,7 @@
             <div class="empty-plan" id="empty-plan">
               <img
                 class="mascot-image"
-                src="assets/studysort-organizer-cat.png"
+                src="assets/studysort-organizer-cat.svg"
                 alt="A cute cat sorting study papers into folders"
               />
               <p>Your organizing cat is ready. Select files, a folder, or a drive to build a personalized plan.</p>
@@ -213,10 +229,70 @@
       </section>
     </div>
 
+    <div class="modal-backdrop hidden" id="flow-modal" role="presentation">
+      <section class="review-dialog flow-dialog" role="dialog" aria-modal="true" aria-labelledby="flow-title" aria-describedby="flow-subtitle">
+        <header class="review-header">
+          <div class="flow-title-block">
+            <p class="eyebrow">Live file flow</p>
+            <h2 id="flow-title">Where every download goes</h2>
+            <p class="flow-subtitle" id="flow-subtitle"></p>
+          </div>
+          <button class="icon-button" id="close-flow-button" type="button" aria-label="Close file flow" title="Close">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="flow-toolbar" role="search">
+          <label class="flow-search">
+            <span class="sr-only">Search files</span>
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input id="flow-search" type="search" placeholder="Search name, course, type, or path" autocomplete="off" />
+          </label>
+          <label>
+            <span class="sr-only">Filter by status</span>
+            <select id="flow-status-filter">
+              <option value="">All statuses</option>
+              <option value="detected">Detected</option>
+              <option value="analyzing">Analyzing</option>
+              <option value="awaiting_approval">Awaiting approval</option>
+              <option value="copying">Copying</option>
+              <option value="copied">Copied</option>
+              <option value="moved">Moved</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label>
+            <span class="sr-only">Filter by course</span>
+            <select id="flow-course-filter"><option value="">All courses</option></select>
+          </label>
+          <label>
+            <span class="sr-only">Filter by file type</span>
+            <select id="flow-type-filter"><option value="">All types</option></select>
+          </label>
+        </div>
+        <div class="flow-body">
+          <p class="flow-banner hidden" id="flow-banner" role="alert"></p>
+          <div class="flow-empty hidden" id="flow-empty">
+            <i data-lucide="inbox" aria-hidden="true"></i>
+            <p id="flow-empty-text">No downloads yet.</p>
+          </div>
+          <div class="flow-list" id="flow-list" aria-label="Detected files"></div>
+        </div>
+        <footer class="review-footer">
+          <p id="flow-count" aria-live="polite">0 files</p>
+          <button class="secondary-button" id="flow-clear-button" type="button">
+            <i data-lucide="eraser" aria-hidden="true"></i>
+            Clear history
+          </button>
+        </footer>
+      </section>
+    </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
     <input id="files-input" type="file" multiple hidden />
     <input id="folder-input" type="file" webkitdirectory multiple hidden />
     <script src="vendor/jszip.min.js"></script>
+    <script src="flow.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
