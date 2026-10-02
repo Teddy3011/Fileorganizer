@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-labelledby="t">
+  <title id="t">A cat sorting study papers into folders</title>
+  <path d="M18 120h70l10 12h60v52H18z" fill="#13795b"/>
+  <path d="M18 132h140v52H18z" fill="#1c9a74"/>
+  <path d="M160 128h52l8 10h-60z" fill="#276b9b"/>
+  <path d="M160 138h62v46h-62z" fill="#3b86bb"/>
+  <rect x="40" y="96" width="44" height="36" rx="3" fill="#fff" stroke="#c9d6d0" stroke-width="2" transform="rotate(-8 62 114)"/>
+  <path d="M48 106h26M48 114h22M48 122h18" stroke="#9aada5" stroke-width="3" stroke-linecap="round" transform="rotate(-8 62 114)"/>
+  <ellipse cx="124" cy="112" rx="34" ry="30" fill="#f2a65a"/>
+  <path d="M96 92l-4-30 24 18zM152 92l4-30-24 18z" fill="#f2a65a"/>
+  <path d="M100 86l-2-16 12 10zM148 86l2-16-12 10z" fill="#f7c9a0"/>
+  <circle cx="112" cy="106" r="4" fill="#18211d"/>
+  <circle cx="136" cy="106" r="4" fill="#18211d"/>
+  <path d="M120 116l4 4 4-4" fill="none" stroke="#18211d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M100 116H84M100 121l-14 4M148 116h16M148 121l14 4" stroke="#b5743a" stroke-width="2" stroke-linecap="round"/>
+  <path d="M150 128c14 6 22 0 26-8" fill="none" stroke="#f2a65a" stroke-width="9" stroke-linecap="round"/>
+  <rect x="166" y="98" width="30" height="26" rx="3" fill="#fff" stroke="#c9d6d0" stroke-width="2" transform="rotate(10 181 111)"/>
+</svg>
